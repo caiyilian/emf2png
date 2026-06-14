@@ -11,10 +11,17 @@ emf2png — 将 PowerPoint 幻灯片一键转换为高清 PNG 图片。
     emf2png.exe 产品介绍.pptx -o ./output
 """
 
-import argparse
 import sys
-import time
 from pathlib import Path
+
+# 将 src/ 加入模块搜索路径，使 src.xxx 可直接 import
+_src = str(Path(__file__).parent / "src")
+if _src not in sys.path:
+    sys.path.insert(0, _src)
+
+
+import argparse
+import time
 
 
 # ============================================================
@@ -157,6 +164,7 @@ def main():
         emf_files=emf_files,
         output_dir=str(output_dir),
         scale=args.scale,
+        dpi=args.dpi,
         keep_emf=args.keep_emf,
         progress_callback=print_progress,
     )

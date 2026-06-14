@@ -75,16 +75,20 @@ emf2png.py 产品介绍.pptx --trim -s 4
 ```
 emf2png/
 ├── emf2png.py              # 主入口 CLI
-├── ppt_to_emf.py           # 模块1: PPT → EMF
-├── emf_to_png.py           # 模块2: EMF → PNG
-├── emf_to_png.exe          # 预编译转换器 (来自参考项目)
-├── trim_whitespace.py      # 模块3: 裁剪纯白边
-├── merge_pdf.py            # 模块4: 可选，PNG 合并为 PDF
-├── requirements.txt        # Python 依赖
-├── build_exe.spec          # PyInstaller 打包配置
+├── src/                    # 核心模块
+│   ├── __init__.py
+│   ├── emf_to_png.py       # EMF → PNG 模块
+│   ├── ppt_to_emf.py       # PPT → EMF 模块
+│   ├── trim_whitespace.py  # 裁剪纯白边
+│   └── merge_pdf.py        # 可选，PNG 合并为 PDF
+├── bin/
+│   └── emf_to_png.exe      # 预编译转换器 (来自参考项目)
+├── docs/
+│   └── 开发方案_PPT转EMF转PNG.md
+├── .venv/                  # uv 虚拟环境
+├── requirements.txt
 ├── .gitignore
-├── README.md
-└── 开发方案_PPT转EMF转PNG.md
+└── README.md
 ```
 
 ### 3.1 主入口 CLI

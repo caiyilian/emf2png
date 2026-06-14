@@ -1,18 +1,25 @@
 """
 EMF → PNG 转换模块。
 
-调用 emf_to_png.exe（Windows GDI 原生渲染）实现高保真转换。
-exe 来自参考项目 emf-pro-converter_with_exe。
+调用 emf_to_png.exe（Windows GDI 原生渲染）实现高保真转换，
+再通过 Pillow 进行缩放和 DPI 设置。
 """
 
+from __future__ import annotations
+
 import subprocess
-import sys
 from pathlib import Path
+
+from PIL import Image
+
+
+# Pillow 大图限制
+Image.MAX_IMAGE_PIXELS = 500_000_000
 
 
 def get_exe_path() -> str:
     """返回 emf_to_png.exe 的绝对路径。"""
-    exe = Path(__file__).parent / "emf_to_png.exe"
+    exe = Path(__file__).parent.parent / "bin" / "emf_to_png.exe"
     if not exe.exists():
         raise FileNotFoundError(
             f"找不到 emf_to_png.exe，请确保该文件存在于: {exe}"
@@ -20,14 +27,51 @@ def get_exe_path() -> str:
     return str(exe.resolve())
 
 
-def convert(emf_path: str, png_path: str, scale: float = 1.0) -> str:
+def _resize_and_set_dpi(
+    png_path: str,
+    scale: float,
+    dpi: int,
+) -> str:
     """
-    将单个 EMF 文件转换为 PNG。
+    对已生成的 PNG 进行缩放并设置 DPI 元数据。
+
+    Args:
+        png_path: 已生成的 PNG 文件路径
+        scale: 缩放倍率 (1.0=原大)
+        dpi: 输出 DPI (写入 PNG metadata)
+
+    Returns:
+        处理后的 PNG 文件路径（原地覆盖）
+    """
+    img = Image.open(png_path)
+
+    # 缩放
+    if scale != 1.0:
+        new_size = (int(img.width * scale), int(img.height * scale))
+        img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+    # 设置 DPI
+    img.save(png_path, dpi=(dpi, dpi))
+
+    return png_path
+
+
+def convert(
+    emf_path: str,
+    png_path: str,
+    scale: float = 1.0,
+    dpi: int = 300,
+) -> str:
+    """
+    将单个 EMF 文件转换为 PNG，可选缩放和 DPI 设置。
+
+    流程: exe 渲染 → Pillow 缩放 (scale≠1) → 写入 DPI 元数据
 
     Args:
         emf_path: 输入 EMF 文件路径
         png_path: 输出 PNG 文件路径
-        scale: 缩放倍率（传递给 exe）
+        scale: 缩放倍率 (1.0=原大, 2.0=2x)
+        dpi: 输出 PNG 的 DPI
 
     Returns:
         生成的 PNG 文件路径
@@ -45,24 +89,24 @@ def convert(emf_path: str, png_path: str, scale: float = 1.0) -> str:
 
     exe = get_exe_path()
 
-    # 构建命令行参数
-    # emf_to_png.exe <input_emf> [output_png]
+    # --------------------------------------------------
+    # 步骤 A: exe 渲染 (原生分辨率)
+    # --------------------------------------------------
     cmd = [exe, str(emf.resolve()), str(png.resolve())]
 
-    # 注意: 不使用 capture_output=True，因为 emf_to_png.exe
-    # 输出内容较多（PIL DecompressionBombWarning 等），
-    # 用管道捕获容易在 Windows 下造成缓冲区死锁。
-    # 直接让子进程的输出流向父进程的控制台。
-    result = subprocess.run(
-        cmd,
-        timeout=60,
-    )
+    # 不使用 capture_output=True 避免 Windows pipe 死锁
+    result = subprocess.run(cmd, timeout=60)
 
     if result.returncode != 0:
         raise RuntimeError(f"EMF→PNG 转换失败 (exit={result.returncode})")
 
     if not png.exists():
         raise RuntimeError(f"转换完成但输出文件未生成: {png_path}")
+
+    # --------------------------------------------------
+    # 步骤 B: 缩放 + DPI (Pillow 后处理)
+    # --------------------------------------------------
+    _resize_and_set_dpi(str(png.resolve()), scale, dpi)
 
     return str(png.resolve())
 
@@ -71,6 +115,7 @@ def batch_convert(
     emf_files: list[str],
     output_dir: str,
     scale: float = 1.0,
+    dpi: int = 300,
     keep_emf: bool = False,
     progress_callback=None,
 ) -> list[str]:
@@ -81,6 +126,7 @@ def batch_convert(
         emf_files: EMF 文件路径列表
         output_dir: PNG 输出目录
         scale: 缩放倍率
+        dpi: 输出 DPI
         keep_emf: 是否保留 EMF 源文件（否则删除）
         progress_callback: 可选进度回调 fn(current, total, filename)
 
@@ -90,7 +136,7 @@ def batch_convert(
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    png_files = []
+    png_files: list[str] = []
     total = len(emf_files)
 
     for i, emf_path in enumerate(emf_files):
@@ -101,7 +147,7 @@ def batch_convert(
         if progress_callback:
             progress_callback(i + 1, total, emf.name)
 
-        convert(emf_path, png_path, scale)
+        convert(emf_path, png_path, scale, dpi)
         png_files.append(png_path)
 
         # 不保留 EMF 则删除
