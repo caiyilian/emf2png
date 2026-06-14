@@ -7,6 +7,8 @@ emf2png — 图形界面入口。
 
 import sys
 import time
+import json
+import os
 from pathlib import Path
 
 # 将 src/ 加入模块搜索路径，使 src.xxx 可直接 import
@@ -23,7 +25,6 @@ from tkinter import filedialog, messagebox
 # ──────────────────────────────────────────────
 
 APP_TITLE = "emf2png — PPT 转 PNG 素材提取工具"
-APP_ICON = None  # 阶段14 添加图标
 
 WINDOW_WIDTH = 640
 WINDOW_HEIGHT = 700
@@ -32,6 +33,12 @@ WINDOW_MIN_HEIGHT = 600
 
 # 颜色
 COLOR_ACCENT = "#4cc9f0"   # 青蓝强调色
+
+# 配置文件路径 (%LOCALAPPDATA%/emf2png/config.json)
+CONFIG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "emf2png"
+CONFIG_PATH = CONFIG_DIR / "config.json"
+
+THEMES = ["Dark", "Light", "System"]
 
 
 # ──────────────────────────────────────────────
@@ -46,13 +53,19 @@ class App(ctk.CTk):
 
         # ── 窗口基础设置 ──
         self.title(APP_TITLE)
-        self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
-        ctk.set_appearance_mode("Dark")
+        ctk.set_appearance_mode(self._load_appearance_mode())
 
         # ── 状态 ──
-        self._converting = False      # 是否正在转换
-        self._last_output_dir = None  # 上次输出目录（供"打开目录"按钮使用）
+        self._converting = False
+        self._last_output_dir = None
+        self._theme_idx = THEMES.index(ctk.get_appearance_mode())
+
+        # ── 恢复窗口位置 ──
+        self._load_window_geometry()
+
+        # ── 全局异常钩子 ──
+        self.report_callback_exception = self._on_tk_exception
 
         # ── 关闭确认 ──
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -74,22 +87,39 @@ class App(ctk.CTk):
     def _build_header(self):
         frame = ctk.CTkFrame(self, corner_radius=0)
         frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        frame.grid_columnconfigure(0, weight=1)
+
+        # 标题
+        title_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        title_frame.grid(row=0, column=0, pady=(16, 0))
 
         title = ctk.CTkLabel(
-            frame,
+            title_frame,
             text="emf2png",
             font=ctk.CTkFont(size=28, weight="bold"),
             text_color=COLOR_ACCENT,
         )
-        title.pack(pady=(16, 0))
+        title.pack(side="left")
 
+        # 主题切换按钮
+        self.btn_theme = ctk.CTkButton(
+            title_frame,
+            text="🌙",
+            width=32, height=32,
+            corner_radius=16,
+            command=self._toggle_theme,
+        )
+        self.btn_theme.pack(side="left", padx=(10, 0))
+        self._update_theme_button_text()
+
+        # 副标题
         subtitle = ctk.CTkLabel(
             frame,
             text="PowerPoint 幻灯片 → 高清 PNG 素材",
             font=ctk.CTkFont(size=13),
             text_color=("gray40", "gray60"),
         )
-        subtitle.pack(pady=(2, 12))
+        subtitle.grid(row=1, column=0, pady=(2, 12))
 
     # ═════════════════════════════════════════
     #  中间：参数配置区
@@ -591,7 +621,7 @@ class App(ctk.CTk):
             os.startfile(self._last_output_dir)
 
     def _on_close(self):
-        """关闭窗口确认：防止转换中误关。"""
+        """关闭窗口确认 + 保存窗口位置。"""
         if self._converting:
             result = messagebox.askyesno(
                 title="确认退出",
@@ -599,7 +629,110 @@ class App(ctk.CTk):
             )
             if not result:
                 return
+        self._save_window_geometry()
+        self._save_appearance_mode()
         self.destroy()
+
+    # ═════════════════════════════════════════
+    #  主题切换
+    # ═════════════════════════════════════════
+
+    def _toggle_theme(self):
+        """在 Dark / Light / System 间循环切换。"""
+        self._theme_idx = (self._theme_idx + 1) % len(THEMES)
+        mode = THEMES[self._theme_idx]
+        ctk.set_appearance_mode(mode)
+        self._update_theme_button_text()
+
+    def _update_theme_button_text(self):
+        """更新主题按钮的文字。"""
+        icons = {"Dark": "Dark", "Light": "Light", "System": "Auto"}
+        current = ctk.get_appearance_mode()
+        self.btn_theme.configure(text=icons.get(current, "Dark"))
+
+    # ═════════════════════════════════════════
+    #  窗口位置记忆
+    # ═════════════════════════════════════════
+
+    def _load_window_geometry(self):
+        """从配置文件恢复窗口位置和大小。"""
+        try:
+            if CONFIG_PATH.exists():
+                data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                geo = data.get("window_geometry", "")
+                if geo:
+                    self.geometry(geo)
+                    return
+        except Exception:
+            pass
+        # 默认尺寸
+        self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+
+    def _save_window_geometry(self):
+        """保存窗口位置和大小到配置文件。"""
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            data = {"window_geometry": self.geometry()}
+            if CONFIG_PATH.exists():
+                existing = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                existing.update(data)
+                data = existing
+            CONFIG_PATH.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+    # ═════════════════════════════════════════
+    #  主题记忆
+    # ═════════════════════════════════════════
+
+    def _load_appearance_mode(self) -> str:
+        """从配置文件恢复主题。"""
+        try:
+            if CONFIG_PATH.exists():
+                data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                return data.get("appearance_mode", "Dark")
+        except Exception:
+            pass
+        return "Dark"
+
+    def _save_appearance_mode(self):
+        """保存当前主题到配置文件。"""
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            data = {"appearance_mode": ctk.get_appearance_mode()}
+            if CONFIG_PATH.exists():
+                existing = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                existing.update(data)
+                data = existing
+            CONFIG_PATH.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+    # ═════════════════════════════════════════
+    #  全局异常处理
+    # ═════════════════════════════════════════
+
+    @staticmethod
+    def _on_tk_exception(exc_type, exc_value, exc_traceback):
+        """捕获 tkinter 回调中的未处理异常，弹窗提示而非崩溃。"""
+        import traceback
+        err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        try:
+            messagebox.showerror(
+                title="意外错误",
+                message=f"程序遇到意外错误:\n\n{exc_value}\n\n"
+                        f"详细信息已打印到控制台。",
+            )
+        except Exception:
+            pass
+        # 仍然打印到控制台供调试
+        print(err_msg, file=sys.stderr)
 
 
 # ──────────────────────────────────────────────
@@ -607,8 +740,21 @@ class App(ctk.CTk):
 # ──────────────────────────────────────────────
 
 def main():
-    app = App()
-    app.mainloop()
+    try:
+        app = App()
+        app.mainloop()
+    except Exception as e:
+        import traceback
+        err_msg = "".join(traceback.format_exc())
+        try:
+            messagebox.showerror(
+                title="启动失败",
+                message=f"程序启动时出现错误:\n\n{e}",
+            )
+        except Exception:
+            pass
+        print(err_msg, file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
