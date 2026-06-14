@@ -22,7 +22,10 @@ def get_exe_path() -> str:
     exe = Path(__file__).parent.parent / "bin" / "emf_to_png.exe"
     if not exe.exists():
         raise FileNotFoundError(
-            f"找不到 emf_to_png.exe，请确保该文件存在于: {exe}"
+            f"找不到 emf_to_png.exe (预期位置: {exe})\n"
+            f"请从以下位置复制:\n"
+            f"  E:\\projects\\emf-pro-converter_with_exe\\server\\bin\\emf_to_png.exe\n"
+            f"或重新运行: git checkout -- bin/emf_to_png.exe"
         )
     return str(exe.resolve())
 
@@ -95,10 +98,24 @@ def convert(
     cmd = [exe, str(emf.resolve()), str(png.resolve())]
 
     # 不使用 capture_output=True 避免 Windows pipe 死锁
-    result = subprocess.run(cmd, timeout=60)
+    try:
+        result = subprocess.run(cmd, timeout=120)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"EMF→PNG 转换超时 (120s): {emf.name}\n"
+            f"  文件过大或 exe 卡死，请尝试缩小 scale 值"
+        )
+    except OSError as e:
+        raise RuntimeError(
+            f"EMF→PNG 转换进程启动失败: {e}\n"
+            f"  请检查 emf_to_png.exe 是否可执行"
+        )
 
     if result.returncode != 0:
-        raise RuntimeError(f"EMF→PNG 转换失败 (exit={result.returncode})")
+        raise RuntimeError(
+            f"EMF→PNG 转换失败 (exit={result.returncode}): {emf.name}\n"
+            f"  请检查 EMF 文件是否损坏"
+        )
 
     if not png.exists():
         raise RuntimeError(f"转换完成但输出文件未生成: {png_path}")
@@ -106,7 +123,16 @@ def convert(
     # --------------------------------------------------
     # 步骤 B: 缩放 + DPI (Pillow 后处理)
     # --------------------------------------------------
-    _resize_and_set_dpi(str(png.resolve()), scale, dpi)
+    try:
+        _resize_and_set_dpi(str(png.resolve()), scale, dpi)
+    except OSError as e:
+        # 磁盘空间不足 / 权限错误
+        raise RuntimeError(
+            f"PNG 后处理失败 (磁盘空间不足?): {e}\n"
+            f"  请检查磁盘剩余空间"
+        )
+    except Exception as e:
+        raise RuntimeError(f"PNG 后处理失败: {e}")
 
     return str(png.resolve())
 
