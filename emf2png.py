@@ -136,24 +136,16 @@ def main():
     # 步骤1: PPT → EMF
     # ------------------------------------------------
     print_step("1/3", f"正在将 PPT 导出为 EMF: {input_path.name}")
-    try:
-        from ppt_to_emf import ppt_to_emf
-        emf_files = ppt_to_emf(
-            ppt_path=str(input_path.resolve()),
-            output_dir=str(output_dir),
-            start=args.start,
-            end=args.end,
-            progress_callback=print_progress,
-        )
-        print(f"  → 生成 {len(emf_files)} 个 EMF 文件")
-    except NotImplementedError as e:
-        print(f"  [!] {e}")
-        print(f"  [!] 跳过 PPT→EMF，尝试直接处理已有的 EMF 文件...")
-        emf_files = list(output_dir.glob("*.emf"))
-        if not emf_files:
-            print("  [ERR] 无可用 EMF 文件，终止。")
-            sys.exit(1)
-        emf_files = [str(f) for f in sorted(emf_files)]
+    from ppt_to_emf import ppt_to_emf
+
+    emf_files = ppt_to_emf(
+        ppt_path=str(input_path.resolve()),
+        output_dir=str(output_dir),
+        start=args.start,
+        end=args.end,
+        progress_callback=print_progress,
+    )
+    print(f"  → 生成 {len(emf_files)} 个 EMF 文件")
 
     # ------------------------------------------------
     # 步骤2: EMF → PNG
