@@ -6,9 +6,9 @@ dist/
 build/
 *.spec
 
-# Virtual environment
-venv/
+# Virtual environment (uv)
 .venv/
+venv/
 env/
 
 # IDE
@@ -28,6 +28,7 @@ test.pptx
 
 # Output directories
 output/
+output*/
 
 # EMF intermediate files
 *.emf
