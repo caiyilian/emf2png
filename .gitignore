@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test PPT file (not to be uploaded to GitHub)
+test.pptx
+*.ppt
+*.pptx
+
+# Environment
+.env
+.env.local
+
+# Output directories
+output/
+
+# EMF intermediate files
+*.emf
+
+# AtomCode internal
+.atomcode/
+
+# OS
+Thumbs.db
+.DS_Store
