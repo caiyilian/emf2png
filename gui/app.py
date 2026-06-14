@@ -6,6 +6,7 @@ emf2png — 图形界面入口。
 """
 
 import sys
+import time
 from pathlib import Path
 
 # 将 src/ 加入模块搜索路径，使 src.xxx 可直接 import
@@ -48,6 +49,13 @@ class App(ctk.CTk):
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         ctk.set_appearance_mode("Dark")
+
+        # ── 状态 ──
+        self._converting = False      # 是否正在转换
+        self._last_output_dir = None  # 上次输出目录（供"打开目录"按钮使用）
+
+        # ── 关闭确认 ──
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # ── 网格布局: 3 行 ──
         self.grid_rowconfigure(0, weight=0)
@@ -352,6 +360,15 @@ class App(ctk.CTk):
         btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
         btn_frame.grid(row=2, column=0, pady=(0, 8))
 
+        self.btn_open_output = ctk.CTkButton(
+            btn_frame,
+            text="打开输出目录",
+            width=140,
+            command=self._on_open_output,
+        )
+        self.btn_open_output.pack(side="left", padx=(0, 8))
+        self.btn_open_output.pack_forget()  # 默认隐藏，转换完成后显示
+
         self.btn_convert = ctk.CTkButton(
             btn_frame,
             text="开始转换",
@@ -360,7 +377,7 @@ class App(ctk.CTk):
             width=180,
             command=self._on_start_convert,
         )
-        self.btn_convert.pack()
+        self.btn_convert.pack(side="left")
 
     # ═════════════════════════════════════════
     #  转换执行
@@ -392,10 +409,16 @@ class App(ctk.CTk):
         keep_emf = self.keep_emf_var.get()
         merge_pdf = self.merge_pdf_var.get()
 
+        # 状态
+        self._converting = True
+        self._convert_start_time = time.time()
+        self._last_output_dir = output_dir
+
         # 禁用 UI
         self._set_ui_enabled(False)
         self.progress_bar.set(0)
         self._clear_log()
+        self.btn_open_output.pack_forget()  # 隐藏"打开目录"按钮
 
         # 在后台线程运行
         args = (ppt_path, output_dir, scale, dpi, start, end, trim, keep_emf, merge_pdf)
@@ -531,22 +554,52 @@ class App(ctk.CTk):
             self.after(0, self._on_convert_error, str(e))
 
     def _on_convert_done(self, png_files: list, output_dir: str):
-        """转换完成：恢复 UI，显示汇总。"""
+        """转换完成：显示汇总，恢复 UI，显示"打开目录"按钮。"""
+        elapsed = time.time() - self._convert_start_time
         total_size = sum(Path(f).stat().st_size for f in png_files)
         self.progress_bar.set(1.0)
         self._log(f"\n{'='*40}")
         self._log(f"[OK] 完成! 共生成 {len(png_files)} 个 PNG 文件")
+        self._log(f"    耗时: {elapsed:.1f}s")
         self._log(f"    总大小: {total_size / 1024:.0f} KB")
         self._log(f"    输出目录: {Path(output_dir).resolve()}")
         self._log(f"{'='*40}")
+        self._converting = False
         self._set_ui_enabled(True)
         self.btn_convert.configure(text="再次转换")
+        self.btn_open_output.pack(side="left", padx=(0, 8), before=self.btn_convert)
 
     def _on_convert_error(self, msg: str):
-        """转换出错：恢复 UI，显示错误。"""
+        """转换出错：显示错误弹窗，恢复 UI。"""
+        self._converting = False
         self._log(f"\n[ERR] {msg}")
         self._set_ui_enabled(True)
         self.btn_convert.configure(text="重新转换")
+        self.after(100, self._show_error_dialog, msg)
+
+    def _show_error_dialog(self, msg: str):
+        """弹出错误对话框。"""
+        messagebox.showerror(
+            title="转换失败",
+            message=f"转换过程中出现错误:\n\n{msg}\n\n请检查参数或文件后重试。",
+        )
+
+    def _on_open_output(self):
+        """在资源管理器中打开输出目录。"""
+        if self._last_output_dir and Path(self._last_output_dir).exists():
+            import os
+            os.startfile(self._last_output_dir)
+
+    def _on_close(self):
+        """关闭窗口确认：防止转换中误关。"""
+        if self._converting:
+            result = messagebox.askyesno(
+                title="确认退出",
+                message="正在转换中，确定要退出吗？\n\n未完成的转换将被中断。",
+            )
+            if not result:
+                return
+        self.destroy()
 
 
 # ──────────────────────────────────────────────
