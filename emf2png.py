@@ -22,31 +22,60 @@ if _src not in sys.path:
 
 import argparse
 import time
+from functools import partial
+
+from tqdm import tqdm
 
 
 # ============================================================
 #  进度与日志工具
 # ============================================================
 
-def print_step(step: str, message: str):
-    """打印带编号的步骤信息。"""
-    print(f"\n[{step}] {message}")
+def make_progress_bar(total: int, desc: str, unit: str = "项"):
+    """
+    创建 tqdm 进度条，返回 (update_callback, bar) 元组。
+
+    用法:
+        cb, bar = make_progress_bar(len(files), "转换中")
+        for f in files:
+            cb(1, len(files), f.name)
+        bar.close()
+    """
+    if total <= 0:
+        total = 1
+    bar = tqdm(
+        total=total,
+        desc=desc,
+        unit=unit,
+        leave=False,
+        bar_format="{desc}: {n}/{total} [{bar:20}] {percentage:3.0f}% {unit}",
+    )
+
+    def callback(current: int, total: int, filename: str = ""):
+        bar.update(1)
+
+    return callback, bar
 
 
-def print_progress(current: int, total: int, filename: str):
-    """进度回调，用于 tqdm 集成（阶段7 将替换为真实进度条）。"""
-    print(f"  [{current}/{total}] {filename}")
+def print_simple_progress(current: int, total: int, filename: str = ""):
+    """简单的文本进度回调（用于 PPT→EMF 步骤，因为总数是运行时才知道）。"""
+    pass
+
+
+def print_step(step_label: str):
+    """打印步骤标题分隔线。"""
+    tqdm.write(f"\n[{step_label}]")
 
 
 def print_summary(png_files: list[str], elapsed: float, output_dir: str):
     """打印完成汇总。"""
     total_size = sum(Path(f).stat().st_size for f in png_files)
-    print(f"\n{'='*50}")
-    print(f"[OK] 完成! 共生成 {len(png_files)} 个 PNG 文件")
-    print(f"   耗时: {elapsed:.1f}s")
-    print(f"   总大小: {total_size / 1024:.0f} KB")
-    print(f"   输出目录: {Path(output_dir).resolve()}")
-    print(f"{'='*50}")
+    tqdm.write(f"\n{'='*50}")
+    tqdm.write(f"[OK] 完成! 共生成 {len(png_files)} 个 PNG 文件")
+    tqdm.write(f"   耗时: {elapsed:.1f}s")
+    tqdm.write(f"   总大小: {total_size / 1024:.0f} KB")
+    tqdm.write(f"   输出目录: {Path(output_dir).resolve()}")
+    tqdm.write(f"{'='*50}")
 
 
 # ============================================================
@@ -142,7 +171,7 @@ def main():
     # ------------------------------------------------
     # 步骤1: PPT → EMF
     # ------------------------------------------------
-    print_step("1/3", f"正在将 PPT 导出为 EMF: {input_path.name}")
+    print_step("1/4  PPT 导出为 EMF")
     from ppt_to_emf import ppt_to_emf
 
     emf_files = ppt_to_emf(
@@ -150,44 +179,53 @@ def main():
         output_dir=str(output_dir),
         start=args.start,
         end=args.end,
-        progress_callback=print_progress,
+        progress_callback=print_simple_progress,
     )
-    print(f"  → 生成 {len(emf_files)} 个 EMF 文件")
+    tqdm.write(f"  -> 生成 {len(emf_files)} 个 EMF 文件")
 
     # ------------------------------------------------
     # 步骤2: EMF → PNG
     # ------------------------------------------------
-    print_step("2/3", f"正在将 EMF 转换为 PNG (scale={args.scale})...")
+    print_step("2/4  EMF 转换为 PNG")
     from emf_to_png import batch_convert
 
+    cb2, bar2 = make_progress_bar(len(emf_files), "  EMF->PNG", "页")
     png_files = batch_convert(
         emf_files=emf_files,
         output_dir=str(output_dir),
         scale=args.scale,
         dpi=args.dpi,
         keep_emf=args.keep_emf,
-        progress_callback=print_progress,
+        progress_callback=cb2,
     )
-    print(f"  → 生成 {len(png_files)} 个 PNG 文件")
+    bar2.close()
+    tqdm.write(f"  -> 生成 {len(png_files)} 个 PNG 文件")
 
     # ------------------------------------------------
-    # 步骤 2.5: 裁剪白边
+    # 步骤 2b: 裁剪白边
     # ------------------------------------------------
     if args.trim:
-        print_step("2.5/3", "正在裁剪纯白边...")
+        print_step("3/4  裁剪纯白边")
         from trim_whitespace import batch_trim_white_borders
-        png_files = batch_trim_white_borders(png_files)
-        print(f"  → 白边裁剪完成")
+
+        cb3, bar3 = make_progress_bar(len(png_files), "  裁剪白边", "张")
+        png_files = batch_trim_white_borders(
+            png_files,
+            progress_callback=cb3,
+        )
+        bar3.close()
+        tqdm.write(f"  -> 白边裁剪完成")
 
     # ------------------------------------------------
     # 步骤3: 合并 PDF
     # ------------------------------------------------
     if args.merge_pdf:
-        print_step("3/3", "正在合并为 PDF...")
+        print_step("4/4  合并为 PDF")
         from merge_pdf import images_to_pdf
+
         pdf_path = str(output_dir / "output.pdf")
         images_to_pdf(png_files, pdf_path)
-        print(f"  → PDF 已生成: {pdf_path}")
+        tqdm.write(f"  -> PDF 已生成: {pdf_path}")
 
     # ------------------------------------------------
     # 完成

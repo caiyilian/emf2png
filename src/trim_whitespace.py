@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PIL import Image
 import numpy as np
 
@@ -115,8 +117,13 @@ def trim_white_borders(png_path: str) -> str:
     return png_path
 
 
-def batch_trim_white_borders(png_files: list[str]) -> list[str]:
+def batch_trim_white_borders(
+    png_files: list[str],
+    progress_callback=None,
+) -> list[str]:
     """批量裁剪白边，就地覆盖。"""
-    for i, f in enumerate(png_files):
+    for f in png_files:
         trim_white_borders(f)
+        if progress_callback:
+            progress_callback(1, len(png_files), Path(f).name)
     return png_files
