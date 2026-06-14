@@ -184,13 +184,10 @@ def main():
     # ------------------------------------------------
     if args.merge_pdf:
         print_step("3/3", "正在合并为 PDF...")
-        try:
-            from merge_pdf import images_to_pdf
-            pdf_path = str(output_dir / "output.pdf")
-            images_to_pdf(png_files, pdf_path)
-            print(f"  → PDF 已生成: {pdf_path}")
-        except NotImplementedError as e:
-            print(f"  [!] {e}")
+        from merge_pdf import images_to_pdf
+        pdf_path = str(output_dir / "output.pdf")
+        images_to_pdf(png_files, pdf_path)
+        print(f"  → PDF 已生成: {pdf_path}")
 
     # ------------------------------------------------
     # 完成
