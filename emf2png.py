@@ -21,10 +21,47 @@ if _src not in sys.path:
 
 
 import argparse
+import signal
 import time
 from functools import partial
 
 from tqdm import tqdm
+
+
+# ============================================================
+#  全局清理
+# ============================================================
+
+_cleanup_actions: list[callable] = []
+
+
+def register_cleanup(fn: callable):
+    """注册清理函数，在退出或异常时执行。"""
+    _cleanup_actions.append(fn)
+
+
+def _do_cleanup():
+    """执行所有注册的清理动作。"""
+    for fn in reversed(_cleanup_actions):
+        try:
+            fn()
+        except Exception:
+            pass
+
+
+def _handle_exception(exc_type, exc_value, exc_traceback):
+    """全局异常钩子：退出前执行清理。"""
+    _do_cleanup()
+    if exc_type is KeyboardInterrupt:
+        tqdm.write("\n[!] 用户中断，正在清理...")
+        sys.exit(130)
+    else:
+        # 非 SystemExit 的异常才调用默认 excepthook
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+
+# 注册异常钩子
+sys.excepthook = _handle_exception
 
 
 # ============================================================
@@ -150,21 +187,46 @@ def build_parser() -> argparse.ArgumentParser:
 # ============================================================
 
 def main():
+    try:
+        _main()
+    except FileNotFoundError as e:
+        tqdm.write(f"\n[ERR] 文件错误: {e}")
+        _do_cleanup()
+        sys.exit(1)
+    except RuntimeError as e:
+        tqdm.write(f"\n[ERR] {e}")
+        _do_cleanup()
+        sys.exit(1)
+    except Exception:
+        _do_cleanup()
+        raise
+
+
+def _main():
     parser = build_parser()
     args = parser.parse_args()
 
     # 校验输入
     input_path = Path(args.input)
     if not input_path.exists():
-        print(f"[ERR] 错误: 文件不存在 — {input_path}")
+        tqdm.write(f"\n[ERR] 文件不存在: {input_path}")
+        tqdm.write(f"       请检查路径是否正确")
         sys.exit(1)
     if input_path.suffix.lower() not in (".ppt", ".pptx"):
-        print(f"[ERR] 错误: 不支持的文件格式 — {input_path.suffix} (仅支持 .ppt / .pptx)")
+        tqdm.write(f"\n[ERR] 不支持的文件格式: {input_path.suffix}")
+        tqdm.write(f"       仅支持 .ppt 和 .pptx 文件")
         sys.exit(1)
+    if input_path.suffix.lower() == ".ppt":
+        tqdm.write(f"[!] 提示: .ppt 是旧版格式，建议另存为 .pptx 以获得更好的兼容性")
 
     # 确保输出目录存在
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        output_dir = Path(args.output)
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        tqdm.write(f"\n[ERR] 无法创建输出目录: {output_dir}")
+        tqdm.write(f"       {e}")
+        sys.exit(1)
 
     start_time = time.time()
 
