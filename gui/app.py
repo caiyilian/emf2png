@@ -102,14 +102,11 @@ class App(ctk.CTk):
         # ── 输出目录选择 ──
         self._build_output_dir_row()
 
-        # ── 参数配置面板占位（阶段11添加） ──
-        self._params_placeholder = ctk.CTkLabel(
-            self.scroll_frame,
-            text="更多参数将在后续阶段添加",
-            font=ctk.CTkFont(size=12),
-            text_color=("gray50", "gray40"),
-        )
-        self._params_placeholder.grid(row=2, column=0, pady=20)
+        # ── 输出设置分组 ──
+        self._build_output_settings()
+
+        # ── 附加选项分组 ──
+        self._build_extra_options()
 
     # ─────────────────────────────────────
     #  输入文件选择
@@ -205,6 +202,130 @@ class App(ctk.CTk):
         if not current:
             self.entry_output.delete(0, "end")
             self.entry_output.insert(0, default_dir)
+
+    # ═════════════════════════════════════════
+    #  输出设置：缩放、DPI、页码范围
+    # ═════════════════════════════════════════
+
+    def _build_output_settings(self):
+        """缩放倍率、DPI、页码范围。"""
+        group = ctk.CTkFrame(self.scroll_frame)
+        group.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        group.grid_columnconfigure(1, weight=1)
+
+        # ── 分组标题 ──
+        title = ctk.CTkLabel(
+            group,
+            text="输出设置",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        )
+        title.grid(row=0, column=0, columnspan=3, sticky="ew", padx=10, pady=(8, 2))
+
+        # ── 缩放倍率（Slider） ──
+        label_scale = ctk.CTkLabel(
+            group, text="缩放倍率", width=80, anchor="w",
+        )
+        label_scale.grid(row=1, column=0, padx=(10, 4), pady=6, sticky="w")
+
+        self.scale_var = ctk.DoubleVar(value=2.0)
+        self.scale_slider = ctk.CTkSlider(
+            group,
+            from_=0.5, to=8.0,
+            number_of_steps=15,
+            variable=self.scale_var,
+            command=self._on_scale_change,
+        )
+        self.scale_slider.grid(row=1, column=1, sticky="ew", padx=(0, 4), pady=6)
+
+        self.scale_label = ctk.CTkLabel(
+            group, text="2.0x", width=50, anchor="w",
+        )
+        self.scale_label.grid(row=1, column=2, padx=(0, 10), pady=6, sticky="w")
+
+        # ── DPI ──
+        label_dpi = ctk.CTkLabel(
+            group, text="DPI", width=80, anchor="w",
+        )
+        label_dpi.grid(row=2, column=0, padx=(10, 4), pady=6, sticky="w")
+
+        self.dpi_var = ctk.StringVar(value="300")
+        self.dpi_entry = ctk.CTkEntry(
+            group,
+            textvariable=self.dpi_var,
+            width=100,
+        )
+        self.dpi_entry.grid(row=2, column=1, sticky="w", padx=(0, 4), pady=6)
+
+        # ── 页码范围 ──
+        label_range = ctk.CTkLabel(
+            group, text="页码范围", width=80, anchor="w",
+        )
+        label_range.grid(row=3, column=0, padx=(10, 4), pady=6, sticky="w")
+
+        range_frame = ctk.CTkFrame(group, fg_color="transparent")
+        range_frame.grid(row=3, column=1, sticky="w", padx=(0, 4), pady=6)
+        range_frame.grid_columnconfigure(1, weight=0)
+
+        self.start_var = ctk.StringVar(value="1")
+        self.start_entry = ctk.CTkEntry(
+            range_frame, textvariable=self.start_var, width=60,
+            placeholder_text="起始",
+        )
+        self.start_entry.grid(row=0, column=0, padx=(0, 4))
+
+        label_to = ctk.CTkLabel(range_frame, text="至")
+        label_to.grid(row=0, column=1, padx=2)
+
+        self.end_var = ctk.StringVar(value="")
+        self.end_entry = ctk.CTkEntry(
+            range_frame, textvariable=self.end_var, width=60,
+            placeholder_text="全部",
+        )
+        self.end_entry.grid(row=0, column=2, padx=(4, 0))
+
+    def _on_scale_change(self, value):
+        """滑块拖动时更新显示文字。"""
+        self.scale_label.configure(text=f"{value:.1f}x")
+
+    # ═════════════════════════════════════════
+    #  附加选项：复选框
+    # ═════════════════════════════════════════
+
+    def _build_extra_options(self):
+        """裁剪白边、保留 EMF、合并 PDF 复选框。"""
+        group = ctk.CTkFrame(self.scroll_frame)
+        group.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+
+        title = ctk.CTkLabel(
+            group,
+            text="附加选项",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        )
+        title.grid(row=0, column=0, columnspan=3, sticky="ew", padx=10, pady=(8, 2))
+
+        # 复选框行
+        cb_frame = ctk.CTkFrame(group, fg_color="transparent")
+        cb_frame.grid(row=1, column=0, sticky="w", padx=10, pady=(4, 10))
+
+        self.trim_var = ctk.BooleanVar(value=True)
+        cb_trim = ctk.CTkCheckBox(
+            cb_frame, text="裁剪白边", variable=self.trim_var,
+        )
+        cb_trim.grid(row=0, column=0, padx=(0, 16))
+
+        self.keep_emf_var = ctk.BooleanVar(value=False)
+        cb_keep = ctk.CTkCheckBox(
+            cb_frame, text="保留 EMF", variable=self.keep_emf_var,
+        )
+        cb_keep.grid(row=0, column=1, padx=(0, 16))
+
+        self.merge_pdf_var = ctk.BooleanVar(value=False)
+        cb_pdf = ctk.CTkCheckBox(
+            cb_frame, text="合并为 PDF", variable=self.merge_pdf_var,
+        )
+        cb_pdf.grid(row=0, column=2, padx=(0, 16))
 
     # ═════════════════════════════════════════
     #  底部：按钮栏（阶段12 填充）
