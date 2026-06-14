@@ -1,0 +1,6 @@
+# requirements.txt
+pywin32>=306        # PowerPoint COM 自动化
+Pillow>=10.0.0      # 图片处理（EMF→PNG 底层 + 裁剪白边）
+numpy>=1.24.0       # 裁剪白边算法（像素矩阵运算）
+tqdm>=4.65.0        # 进度条
+img2pdf>=0.4.0      # PNG→PDF 合并（可选）

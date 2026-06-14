@@ -31,7 +31,20 @@ emf2png.exe 产品介绍.pptx --trim -s 2          # 裁剪白边 + 2x 高清
 emf2png.exe 产品介绍.pptx --start 3 --end 10    # 指定页码范围
 ```
 
-### 方式二：Python 源码运行
+### 方式二：使用 uv（推荐）
+
+项目使用 [uv](https://docs.astral.sh/uv/) 管理 Python 环境和依赖。
+
+```bash
+# 创建虚拟环境并安装依赖（已有 .venv 则跳过）
+uv venv
+uv pip install -r requirements.txt
+
+# 运行
+uv run emf2png.py 产品介绍.pptx --trim -s 4
+```
+
+### 方式三：Python 源码运行（传统 pip）
 
 ```bash
 pip install -r requirements.txt
@@ -75,7 +88,7 @@ emf2png.exe 产品介绍.pptx --start 5 --end 15 -s 3 --trim --merge-pdf
 
 - **操作系统**: Windows 10/11
 - **Office**: Microsoft PowerPoint（用于 PPT→EMF 导出）
-- **Python**（仅源码运行需要）: 3.9+
+- **Python**（仅源码运行需要）: 3.10+（推荐使用项目的 uv 环境，Python 3.12）
 
 ---
 
