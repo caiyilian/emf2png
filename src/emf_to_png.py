@@ -104,8 +104,9 @@ def convert(
     cmd = [exe, str(emf.resolve()), str(png.resolve())]
 
     # 不使用 capture_output=True 避免 Windows pipe 死锁
+    # CREATE_NO_WINDOW 防止 emf_to_png.exe 弹出黑窗口
     try:
-        result = subprocess.run(cmd, timeout=120)
+        result = subprocess.run(cmd, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
     except subprocess.TimeoutExpired:
         raise RuntimeError(
             f"EMF→PNG 转换超时 (120s): {emf.name}\n"
