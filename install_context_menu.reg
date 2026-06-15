@@ -1,0 +1,25 @@
+﻿Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pptx\shell\emf2png]
+@="导出 PDF(裁剪白边)"
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pptx\shell\emf2png\command]
+@="E:\projects\emf2png\.venv\Scripts\python.exe \"E:\projects\emf2png\ppt_to_pdf.py\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pptm\shell\emf2png]
+@="导出 PDF(裁剪白边)"
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pptm\shell\emf2png\command]
+@="E:\projects\emf2png\.venv\Scripts\python.exe \"E:\projects\emf2png\ppt_to_pdf.py\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.ppt\shell\emf2png]
+@="导出 PDF(裁剪白边)"
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.ppt\shell\emf2png\command]
+@="E:\projects\emf2png\.venv\Scripts\python.exe \"E:\projects\emf2png\ppt_to_pdf.py\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.emf\shell\emf2png]
+@="转为 PNG(裁剪白边)"
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.emf\shell\emf2png\command]
+@="E:\projects\emf2png\.venv\Scripts\python.exe \"E:\projects\emf2png\ppt_to_pdf.py\" \"%1\""
