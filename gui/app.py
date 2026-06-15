@@ -9,18 +9,18 @@ import sys
 import time
 import json
 import os
+import zipfile
 from pathlib import Path
 
-# 将 src/ 加入模块搜索路径，使 src.xxx 可直接 import
-# 源码模式: 相对于 __file__ 的 ../src
-# PyInstaller 模式: 相对于 sys._MEIPASS 的 src
+# 将项目根目录加入模块搜索路径，使 src.xxx 可直接 import
+# 源码模式: 相对于 __file__ 的 ../ (emf2png/)
+# PyInstaller 模式: 相对于 sys._MEIPASS
 if hasattr(sys, "_MEIPASS"):
-    _base = Path(sys._MEIPASS)
+    _root = Path(sys._MEIPASS)
 else:
-    _base = Path(__file__).parent.parent
-_src = str(_base / "src")
-if _src not in sys.path:
-    sys.path.insert(0, _src)
+    _root = Path(__file__).parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -45,6 +45,16 @@ CONFIG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "emf2png"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 
 THEMES = ["Dark", "Light", "System"]
+
+
+def _count_pptx_slides(path: str) -> int | None:
+    """读取 .pptx 文件，返回幻灯片页数（不依赖 PowerPoint）。"""
+    try:
+        with zipfile.ZipFile(path) as z:
+            slides = [n for n in z.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml")]
+        return len(slides)
+    except Exception:
+        return None
 
 
 # ──────────────────────────────────────────────
@@ -85,6 +95,9 @@ class App(ctk.CTk):
         self._build_header()
         self._build_params_area()
         self._build_footer()
+
+        # 初始化页码范围状态（所有控件已就绪后）
+        self.after(0, self._on_page_range_change)
 
     # ═════════════════════════════════════════
     #  顶部：标题栏
@@ -198,6 +211,27 @@ class App(ctk.CTk):
             self.entry_ppt.delete(0, "end")
             self.entry_ppt.insert(0, path)
             self._auto_set_output_dir(path)
+            self._update_page_max_from_file(path)
+
+    def _update_page_max_from_file(self, path: str):
+        """根据文件实际页数更新页码上限。"""
+        suffix = Path(path).suffix.lower()
+        max_pages = None
+
+        if suffix == ".emf":
+            max_pages = 1  # EMF 单文件单页
+        elif suffix == ".pptx":
+            max_pages = _count_pptx_slides(path)
+
+        if max_pages is not None:
+            self.start_entry.configure(validate="key")
+            self.end_entry.configure(validate="key")
+            # 如果当前值超过上限，修正
+            for var in (self.start_var, self.end_var):
+                v = int(var.get()) if var.get().isdigit() else 1
+                if v > max_pages:
+                    var.set(str(max_pages))
+            self.after(0, self._on_page_range_change)
 
     # ─────────────────────────────────────
     #  输出目录选择
@@ -274,7 +308,7 @@ class App(ctk.CTk):
         )
         label_scale.grid(row=1, column=0, padx=(10, 4), pady=6, sticky="w")
 
-        self.scale_var = ctk.DoubleVar(value=2.0)
+        self.scale_var = ctk.DoubleVar(value=1.0)
         self.scale_slider = ctk.CTkSlider(
             group,
             from_=0.5, to=8.0,
@@ -285,7 +319,7 @@ class App(ctk.CTk):
         self.scale_slider.grid(row=1, column=1, sticky="ew", padx=(0, 4), pady=6)
 
         self.scale_label = ctk.CTkLabel(
-            group, text="2.0x", width=50, anchor="w",
+            group, text="1.0x", width=50, anchor="w",
         )
         self.scale_label.grid(row=1, column=2, padx=(0, 10), pady=6, sticky="w")
 
@@ -317,22 +351,61 @@ class App(ctk.CTk):
         self.start_entry = ctk.CTkEntry(
             range_frame, textvariable=self.start_var, width=60,
             placeholder_text="起始",
+            validate="key",
+            validatecommand=(self.register(self._validate_page_input), "%P"),
         )
         self.start_entry.grid(row=0, column=0, padx=(0, 4))
+        self.start_var.trace_add("write", self._on_page_range_change)
 
         label_to = ctk.CTkLabel(range_frame, text="至")
         label_to.grid(row=0, column=1, padx=2)
 
-        self.end_var = ctk.StringVar(value="")
+        self.end_var = ctk.StringVar(value="1")
         self.end_entry = ctk.CTkEntry(
             range_frame, textvariable=self.end_var, width=60,
-            placeholder_text="全部",
+            placeholder_text="结束",
+            validate="key",
+            validatecommand=(self.register(self._validate_page_input), "%P"),
         )
         self.end_entry.grid(row=0, column=2, padx=(4, 0))
+        self.end_var.trace_add("write", self._on_page_range_change)
 
     def _on_scale_change(self, value):
         """滑块拖动时更新显示文字。"""
         self.scale_label.configure(text=f"{value:.1f}x")
+
+    # ─────────────────────────────────────
+    #  页码范围校验
+    # ─────────────────────────────────────
+
+    def _validate_page_input(self, value: str) -> bool:
+        """只允许输入数字或空。"""
+        return value == "" or value.isdigit()
+
+    def _on_page_range_change(self, *_):
+        """页码范围变化时修正数值并更新合并 PDF 选项。"""
+        # 控件未就绪时跳过（trace 可能早于控件创建）
+        if not hasattr(self, "merge_pdf_cb"):
+            return
+        start_str = self.start_var.get()
+        end_str = self.end_var.get()
+
+        # 转为数字，空视为 0
+        start = int(start_str) if start_str.isdigit() else 0
+        end = int(end_str) if end_str.isdigit() else 0
+
+        # 确保最小为 1
+        if start_str.isdigit() and start < 1:
+            self.start_var.set("1")
+            start = 1
+        if end_str.isdigit() and end < 1:
+            self.end_var.set("1")
+            end = 1
+
+        # 如果左 > 右，调整右边 = 左边
+        if start > end and end >= 1:
+            self.end_var.set(str(start))
+            end = start
 
     # ═════════════════════════════════════════
     #  附加选项：复选框
@@ -368,10 +441,10 @@ class App(ctk.CTk):
         cb_keep.grid(row=0, column=1, padx=(0, 16))
 
         self.merge_pdf_var = ctk.BooleanVar(value=False)
-        cb_pdf = ctk.CTkCheckBox(
+        self.merge_pdf_cb = ctk.CTkCheckBox(
             cb_frame, text="合并为 PDF", variable=self.merge_pdf_var,
         )
-        cb_pdf.grid(row=0, column=2, padx=(0, 16))
+        self.merge_pdf_cb.grid(row=0, column=2, padx=(0, 16))
 
     # ═════════════════════════════════════════
     #  底部：进度条 + 日志 + 转换按钮
