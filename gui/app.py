@@ -616,9 +616,11 @@ class App(ctk.CTk):
 
     def _on_open_output(self):
         """在资源管理器中打开输出目录。"""
-        if self._last_output_dir and Path(self._last_output_dir).exists():
+        if self._last_output_dir:
             import os
-            os.startfile(self._last_output_dir)
+            path = Path(self._last_output_dir).resolve()
+            if path.exists():
+                os.startfile(str(path))
 
     def _on_close(self):
         """关闭窗口确认 + 保存窗口位置。"""
