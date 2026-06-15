@@ -11,25 +11,32 @@ import os
 import winreg
 from pathlib import Path
 
-ROOT = Path(__file__).parent.resolve()
+ROOT = Path(__file__).parent.parent.resolve()
 PYTHONW = ROOT / ".venv" / "Scripts" / "pythonw.exe"
-SCRIPT = ROOT / "ppt_to_pdf.py"
+PDF_SCRIPT = ROOT / "ppt_to_pdf.py"
+PNG_SCRIPT = ROOT / "convert_to_png.py"
 
 # 注册表路径模板
-KEY_TPL = r"Software\Classes\SystemFileAssociations\{ext}\shell\emf2png"
+KEY_TPL = r"Software\Classes\SystemFileAssociations\{ext}\shell\emf2png\{action}"
 
 MENU_ITEMS = {
-    ".pptx": "导出 PDF(裁剪白边)",
-    ".pptm": "导出 PDF(裁剪白边)",
-    ".ppt": "导出 PDF(裁剪白边)",
-    ".emf": "转为 PNG(裁剪白边)",
+    # (扩展名, 动作名, 显示文字, 脚本路径)
+    (".pptx", "pdf", "导出 PDF(裁剪白边)", PDF_SCRIPT),
+    (".pptm", "pdf", "导出 PDF(裁剪白边)", PDF_SCRIPT),
+    (".ppt", "pdf", "导出 PDF(裁剪白边)", PDF_SCRIPT),
+    (".emf", "png", "转为 PNG(裁剪白边)", PNG_SCRIPT),
+    (".pptx", "png", "导出 PNG(裁剪白边)", PNG_SCRIPT),
+    (".pptm", "png", "导出 PNG(裁剪白边)", PNG_SCRIPT),
+    (".ppt", "png", "导出 PNG(裁剪白边)", PNG_SCRIPT),
 }
 
 
 def is_installed() -> bool:
-    """检查是否已安装。"""
+    """检查是否已安装（任一菜单项存在即可）。"""
+    ext, action, _, _ = next(iter(MENU_ITEMS))
+    key_path = KEY_TPL.format(ext=ext, action=action)
     try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, KEY_TPL.format(ext=".pptx"), 0, winreg.KEY_QUERY_VALUE)
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_QUERY_VALUE)
         winreg.QueryValueEx(key, "")
         winreg.CloseKey(key)
         return True
@@ -40,37 +47,68 @@ def is_installed() -> bool:
 def install():
     """安装右键菜单。"""
     print("安装右键菜单...")
-    for ext, label in MENU_ITEMS.items():
-        key_path = KEY_TPL.format(ext=ext)
+
+    # 先清理旧格式（递归删除 emf2png 键及其所有子键）
+    for ext in (".pptx", ".pptm", ".ppt", ".emf"):
+        base = r"Software\Classes\SystemFileAssociations\{ext}\shell\emf2png".format(ext=ext)
         try:
+            # 删除已知的子键
+            for sub in [r"\command", r"\pdf\command", r"\pdf", r"\png\command", r"\png"]:
+                try:
+                    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, base + sub)
+                except FileNotFoundError:
+                    pass
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, base)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+
+    for ext, action, label, script in MENU_ITEMS:
+        key_path = KEY_TPL.format(ext=ext, action=action)
+        try:
+            # 创建主键（带默认值）
             key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
             winreg.SetValueEx(key, "", 0, winreg.REG_SZ, label)
             winreg.CloseKey(key)
 
+            # 创建 command 子键
             cmd_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path + r"\command")
-            cmd = f'"{PYTHONW}" "{SCRIPT}" "%1"'
+            cmd = f'"{PYTHONW}" "{script}" "%1"'
             winreg.SetValueEx(cmd_key, "", 0, winreg.REG_SZ, cmd)
             winreg.CloseKey(cmd_key)
-            print(f"  [OK] {ext} -> {label}")
+            print(f"  [OK] {ext} [{action}] -> {label}")
         except Exception as e:
-            print(f"  [ERR] {ext}: {e}")
+            print(f"  [ERR] {ext} [{action}]: {e}")
 
-    print(f"\n[OK] 安装完成！右键 .pptx 文件试试。")
+    print(f"\n[OK] 安装完成！右键文件试试。")
 
 
 def uninstall():
     """卸载右键菜单。"""
     print("卸载右键菜单...")
-    for ext in MENU_ITEMS:
-        key_path = KEY_TPL.format(ext=ext)
+    # 收集所有唯一的 (ext, base_key) 对，先删 command 再删父键
+    keys = set()
+    for ext, action, _, _ in MENU_ITEMS:
+        keys.add((ext, KEY_TPL.format(ext=ext, action=action)))
+
+    # 先删 command 子键
+    for ext, base_key in keys:
         try:
-            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key_path + r"\command")
-            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key_path)
-            print(f"  [OK] {ext} 已删除")
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, base_key + r"\command")
+        except FileNotFoundError:
+            pass
+
+    # 再删父键
+    for ext, base_key in keys:
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, base_key)
+            print(f"  [OK] {ext} [{base_key.split(chr(92))[-1]}] 已删除")
         except FileNotFoundError:
             pass
         except Exception as e:
             print(f"  [ERR] {ext}: {e}")
+
     print("\n[OK] 已卸载。")
 
 
@@ -86,8 +124,12 @@ def main():
         input("\n按 Enter 退出...")
         sys.exit(1)
 
-    if not SCRIPT.exists():
-        print(f"[ERR] 找不到 {SCRIPT}")
+    if not PDF_SCRIPT.exists():
+        print(f"[ERR] 找不到 {PDF_SCRIPT}")
+        input("\n按 Enter 退出...")
+        sys.exit(1)
+    if not PNG_SCRIPT.exists():
+        print(f"[ERR] 找不到 {PNG_SCRIPT}")
         input("\n按 Enter 退出...")
         sys.exit(1)
 
