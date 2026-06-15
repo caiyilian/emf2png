@@ -14,16 +14,15 @@ emf2png — 将 PowerPoint 幻灯片一键转换为高清 PNG 图片。
 import sys
 from pathlib import Path
 
-# 将 src/ 加入模块搜索路径，使 src.xxx 可直接 import
-# 源码模式: 相对于 __file__ 的 src/
-# PyInstaller 模式: 相对于 sys._MEIPASS 的 src/
+# 将项目根目录加入模块搜索路径，使 src.xxx 可直接 import
+# 源码模式: 相对于 __file__ 的 . (emf2png/)
+# PyInstaller 模式: 相对于 sys._MEIPASS
 if hasattr(sys, "_MEIPASS"):
-    _base = Path(sys._MEIPASS)
+    _root = Path(sys._MEIPASS)
 else:
-    _base = Path(__file__).parent
-_src = str(_base / "src")
-if _src not in sys.path:
-    sys.path.insert(0, _src)
+    _root = Path(__file__).parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
 
 
 import argparse
