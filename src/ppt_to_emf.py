@@ -128,15 +128,17 @@ def ppt_to_emf(
                 print(f"  [!] {err_msg}")
 
     finally:
-        # 清理：关闭 PPT，退出 PowerPoint
+        # 清理：关闭 PPT（但不要退出 PowerPoint！）
+        # 如果调用 app.Quit()，会关闭用户当前正在编辑的 PPT
         if pres is not None:
             try:
                 pres.Close()
             except Exception:
                 pass
+        # 仅释放 COM 引用，不关闭整个 PowerPoint
         if app is not None:
             try:
-                app.Quit()
+                app = None
             except Exception:
                 pass
         try:
