@@ -8,6 +8,7 @@ EMF → PNG 转换模块。
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image
@@ -18,14 +19,19 @@ Image.MAX_IMAGE_PIXELS = 500_000_000
 
 
 def get_exe_path() -> str:
-    """返回 emf_to_png.exe 的绝对路径。"""
-    exe = Path(__file__).parent.parent / "bin" / "emf_to_png.exe"
+    """返回 emf_to_png.exe 的绝对路径。
+
+    支持两种运行模式：
+    - 源码运行: 相对于 __file__ 寻找 ../bin/emf_to_png.exe
+    - PyInstaller 打包: 相对于 sys._MEIPASS 寻找 bin/emf_to_png.exe
+    """
+    # PyInstaller 打包模式下，资源文件在 sys._MEIPASS 目录
+    base = Path(sys._MEIPASS) if hasattr(sys, "_MEIPASS") else Path(__file__).parent.parent
+    exe = base / "bin" / "emf_to_png.exe"
     if not exe.exists():
         raise FileNotFoundError(
             f"找不到 emf_to_png.exe (预期位置: {exe})\n"
-            f"请从以下位置复制:\n"
-            f"  E:\\projects\\emf-pro-converter_with_exe\\server\\bin\\emf_to_png.exe\n"
-            f"或重新运行: git checkout -- bin/emf_to_png.exe"
+            f"请确保该文件存在于 bin/ 目录下"
         )
     return str(exe.resolve())
 
