@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:type="TaskPaneApp">
+  <Id>caiyilian.emf2png.ppt-to-pdf</Id>
+  <Version>1.0.0</Version>
+  <ProviderName>emf2png</ProviderName>
+  <DefaultLocale>zh-CN</DefaultLocale>
+  <DisplayName DefaultValue="emf2png - PDF导出(裁剪白边)"/>
+  <Description DefaultValue="一键将当前PPT导出为PDF，自动裁剪纯白边"/>
+  <IconUrl DefaultValue="http://localhost:5678/icon.png"/>
+  <SupportUrl DefaultValue="https://github.com/caiyilian/emf2png"/>
+  <AppDomains>
+    <AppDomain>http://localhost:5678</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Presentation"/>
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="http://localhost:5678/"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+</OfficeApp>
