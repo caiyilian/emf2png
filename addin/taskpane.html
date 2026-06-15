@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>emf2png</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    padding: 16px;
+    font-size: 14px;
+  }
+  h1 {
+    font-size: 20px;
+    color: #4cc9f0;
+    margin-bottom: 4px;
+  }
+  p.sub {
+    color: #888;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  .btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  .btn-primary {
+    background: #4cc9f0;
+    color: #1a1a2e;
+  }
+  .btn-primary:hover { background: #3db8df; }
+  .btn-primary:disabled {
+    background: #2a5a6e;
+    color: #666;
+    cursor: not-allowed;
+  }
+  #status {
+    background: #16213e;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 13px;
+    min-height: 60px;
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .progress-bar {
+    width: 100%;
+    height: 6px;
+    background: #16213e;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .progress-bar .fill {
+    height: 100%;
+    background: #4cc9f0;
+    width: 0%;
+    transition: width 0.3s;
+  }
+  .error { color: #e74c3c; }
+  .success { color: #2ecc71; }
+  .info { color: #888; }
+</style>
+</head>
+<body>
+
+<h1>emf2png</h1>
+<p class="sub">PowerPoint / EMF 转 PDF (裁剪白边)</p>
+
+<div class="progress-bar" id="progressBar">
+  <div class="fill" id="progressFill"></div>
+</div>
+
+<div id="status" class="info">准备就绪，点击下方按钮开始转换</div>
+
+<button class="btn btn-primary" id="btnConvert" onclick="convertToPdf()">
+  导出 PDF（裁剪白边）
+</button>
+
+<script>
+async function convertToPdf() {
+  const btn = document.getElementById("btnConvert");
+  const status = document.getElementById("status");
+  const bar = document.getElementById("progressBar");
+  const fill = document.getElementById("progressFill");
+
+  btn.disabled = true;
+  btn.textContent = "转换中...";
+  bar.style.display = "block";
+  fill.style.width = "10%";
+  status.className = "";
+  status.textContent = "正在获取当前 PPT 文件...";
+
+  try {
+    // Step 1: Get the PPT file from PowerPoint
+    fill.style.width = "20%";
+    status.textContent = "正在读取 PPT 文件...";
+
+    const file = await new Promise((resolve, reject) => {
+      Office.context.document.getFileAsync(
+        Office.FileType.Compressed,
+        { sliceSize: 5000000 },
+        (result) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve(result.value);
+          } else {
+            reject(new Error(result.error.message));
+          }
+        }
+      );
+    });
+
+    fill.style.width = "40%";
+    status.textContent = "正在读取文件内容...";
+
+    // Read the file in slices
+    const slices = [];
+    const totalSlices = Math.ceil(file.size / 5000000);
+
+    for (let i = 0; i < totalSlices; i++) {
+      const slice = await new Promise((resolve, reject) => {
+        file.getSliceAsync(i, (result) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve(result.value.data);
+          } else {
+            reject(new Error(result.error.message));
+          }
+        });
+      });
+      slices.push(slice);
+    }
+
+    // Convert to Base64
+    const combined = new Uint8Array(file.size);
+    let offset = 0;
+    for (const slice of slices) {
+      combined.set(new Uint8Array(slice), offset);
+      offset += slice.byteLength;
+    }
+
+    const binary = Array.from(combined).map(b => String.fromCharCode(b)).join("");
+    const fileBase64 = btoa(binary);
+
+    fill.style.width = "60%";
+    status.textContent = "正在发送到转换服务...";
+
+    // Step 2: Send to local server
+    const response = await fetch("http://localhost:5678/convert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_base64: fileBase64,
+        filename: "presentation.pptx",
+      }),
+    });
+
+    fill.style.width = "80%";
+    status.textContent = "转换完成，正在准备下载...";
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    fill.style.width = "100%";
+    status.className = "success";
+    status.textContent = "转换成功！正在下载 PDF...";
+
+    // Step 3: Save as PDF
+    const pdfBytes = Uint8Array.from(atob(data.pdf_base64), c => c.charCodeAt(0));
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+
+    // Try to save using Office API, fallback to download
+    try {
+      await Office.context.document.setFilePropertiesAsync({
+        url: URL.createObjectURL(blob)
+      });
+    } catch(e) {}
+
+    // Download the file
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = data.filename || "converted.pdf";
+    link.click();
+
+    status.className = "success";
+    status.textContent = "转换完成！PDF 已下载。\n" + data.filename;
+    btn.textContent = "再次转换";
+
+  } catch (err) {
+    status.className = "error";
+    status.textContent = "错误: " + err.message + "\n\n请确认 emf2png 服务正在运行:\nuv run python server.py";
+    btn.textContent = "重试";
+  }
+
+  btn.disabled = false;
+  bar.style.display = "none";
+}
+</script>
+
+</body>
+</html>
