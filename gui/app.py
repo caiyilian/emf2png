@@ -12,7 +12,13 @@ import os
 from pathlib import Path
 
 # 将 src/ 加入模块搜索路径，使 src.xxx 可直接 import
-_src = str(Path(__file__).parent.parent / "src")
+# 源码模式: 相对于 __file__ 的 ../src
+# PyInstaller 模式: 相对于 sys._MEIPASS 的 src
+if hasattr(sys, "_MEIPASS"):
+    _base = Path(sys._MEIPASS)
+else:
+    _base = Path(__file__).parent.parent
+_src = str(_base / "src")
 if _src not in sys.path:
     sys.path.insert(0, _src)
 
@@ -24,7 +30,7 @@ from tkinter import filedialog, messagebox
 #  主题与常量
 # ──────────────────────────────────────────────
 
-APP_TITLE = "emf2png — PPT 转 PNG 素材提取工具"
+APP_TITLE = "emf2png — PPT / EMF 转 PNG 素材提取工具"
 
 WINDOW_WIDTH = 640
 WINDOW_HEIGHT = 700
@@ -115,7 +121,7 @@ class App(ctk.CTk):
         # 副标题
         subtitle = ctk.CTkLabel(
             frame,
-            text="PowerPoint 幻灯片 → 高清 PNG 素材",
+            text="PowerPoint / EMF 幻灯片 → 高清 PNG 素材",
             font=ctk.CTkFont(size=13),
             text_color=("gray40", "gray60"),
         )
@@ -166,7 +172,7 @@ class App(ctk.CTk):
 
         self.entry_ppt = ctk.CTkEntry(
             group,
-            placeholder_text="选择或拖入 .ppt / .pptx 文件",
+            placeholder_text="选择 .ppt / .pptx / .emf 文件",
         )
         self.entry_ppt.grid(row=0, column=1, sticky="ew", padx=(0, 4), pady=10)
 
@@ -180,9 +186,11 @@ class App(ctk.CTk):
 
     def _on_browse_ppt(self):
         path = filedialog.askopenfilename(
-            title="选择 PowerPoint 文件",
+            title="选择 PowerPoint 或 EMF 文件",
             filetypes=[
+                ("支持的文件", "*.pptx *.ppt *.emf"),
                 ("PowerPoint 文件", "*.pptx *.ppt"),
+                ("EMF 矢量图", "*.emf"),
                 ("所有文件", "*.*"),
             ],
         )
@@ -534,17 +542,25 @@ class App(ctk.CTk):
             # 确保输出目录
             Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            # ── 步骤1: PPT → EMF ──
-            on_step(1, "PPT 导出为 EMF")
-            from src.ppt_to_emf import ppt_to_emf
-            emf_files = ppt_to_emf(
-                ppt_path=ppt_path,
-                output_dir=output_dir,
-                start=start,
-                end=end,
-                progress_callback=on_progress,
-            )
-            self._log(f"  -> 生成 {len(emf_files)} 个 EMF 文件")
+            # 检测输入类型：PPT 或 EMF
+            is_emf = ppt_path.lower().endswith(".emf")
+
+            # ── 步骤1: PPT → EMF（仅对 PPT 输入） ──
+            if is_emf:
+                on_step(1, "处理 EMF 文件")
+                emf_files = [ppt_path]
+                self._log(f"  -> 直接处理 EMF 文件: {Path(ppt_path).name}")
+            else:
+                on_step(1, "PPT 导出为 EMF")
+                from src.ppt_to_emf import ppt_to_emf
+                emf_files = ppt_to_emf(
+                    ppt_path=ppt_path,
+                    output_dir=output_dir,
+                    start=start,
+                    end=end,
+                    progress_callback=on_progress,
+                )
+                self._log(f"  -> 生成 {len(emf_files)} 个 EMF 文件")
 
             # ── 步骤2: EMF → PNG ──
             on_step(2, "EMF 转换为 PNG")

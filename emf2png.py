@@ -15,7 +15,13 @@ import sys
 from pathlib import Path
 
 # 将 src/ 加入模块搜索路径，使 src.xxx 可直接 import
-_src = str(Path(__file__).parent / "src")
+# 源码模式: 相对于 __file__ 的 src/
+# PyInstaller 模式: 相对于 sys._MEIPASS 的 src/
+if hasattr(sys, "_MEIPASS"):
+    _base = Path(sys._MEIPASS)
+else:
+    _base = Path(__file__).parent
+_src = str(_base / "src")
 if _src not in sys.path:
     sys.path.insert(0, _src)
 
@@ -121,10 +127,11 @@ def print_summary(png_files: list[str], elapsed: float, output_dir: str):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="将 PowerPoint 文件转换为 PNG 图片 (PPT → EMF → PNG)",
+        description="将 PowerPoint / EMF 文件转换为 PNG 图片 (PPT → EMF → PNG)",
         epilog="示例:\n"
                "  %(prog)s 产品介绍.pptx\n"
                "  %(prog)s 产品介绍.pptx --trim -s 4\n"
+               "  %(prog)s 图表.emf --trim -s 4\n"
                "  %(prog)s 产品介绍.pptx --start 3 --end 10 --merge-pdf\n"
                "  %(prog)s 产品介绍.pptx --keep-emf -o ./output",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -132,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "input",
-        help="输入的 .ppt 或 .pptx 文件路径",
+        help="输入的 .ppt / .pptx / .emf 文件路径",
     )
     parser.add_argument(
         "-o", "--output",
@@ -212,11 +219,13 @@ def _main():
         tqdm.write(f"\n[ERR] 文件不存在: {input_path}")
         tqdm.write(f"       请检查路径是否正确")
         sys.exit(1)
-    if input_path.suffix.lower() not in (".ppt", ".pptx"):
-        tqdm.write(f"\n[ERR] 不支持的文件格式: {input_path.suffix}")
-        tqdm.write(f"       仅支持 .ppt 和 .pptx 文件")
+
+    suffix = input_path.suffix.lower()
+    if suffix not in (".ppt", ".pptx", ".emf"):
+        tqdm.write(f"\n[ERR] 不支持的文件格式: {suffix}")
+        tqdm.write(f"       仅支持 .ppt、.pptx 和 .emf 文件")
         sys.exit(1)
-    if input_path.suffix.lower() == ".ppt":
+    if suffix == ".ppt":
         tqdm.write(f"[!] 提示: .ppt 是旧版格式，建议另存为 .pptx 以获得更好的兼容性")
 
     # 确保输出目录存在
@@ -231,19 +240,24 @@ def _main():
     start_time = time.time()
 
     # ------------------------------------------------
-    # 步骤1: PPT → EMF
+    # 步骤1: PPT → EMF（仅对 PPT 输入）
     # ------------------------------------------------
-    print_step("1/4  PPT 导出为 EMF")
-    from ppt_to_emf import ppt_to_emf
+    if suffix == ".emf":
+        # EMF 直接输入，跳过步骤1
+        emf_files = [str(input_path.resolve())]
+        tqdm.write(f"  -> 直接处理 EMF 文件: {input_path.name}")
+    else:
+        print_step("1/4  PPT 导出为 EMF")
+        from ppt_to_emf import ppt_to_emf
 
-    emf_files = ppt_to_emf(
-        ppt_path=str(input_path.resolve()),
-        output_dir=str(output_dir),
-        start=args.start,
-        end=args.end,
-        progress_callback=print_simple_progress,
-    )
-    tqdm.write(f"  -> 生成 {len(emf_files)} 个 EMF 文件")
+        emf_files = ppt_to_emf(
+            ppt_path=str(input_path.resolve()),
+            output_dir=str(output_dir),
+            start=args.start,
+            end=args.end,
+            progress_callback=print_simple_progress,
+        )
+        tqdm.write(f"  -> 生成 {len(emf_files)} 个 EMF 文件")
 
     # ------------------------------------------------
     # 步骤2: EMF → PNG
