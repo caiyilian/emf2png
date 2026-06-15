@@ -141,6 +141,10 @@ def ppt_to_pdf(ppt_path: str) -> str:
     output_dir = ppt.parent
     pdf_path = output_dir / f"{ppt.stem}.pdf"
 
+    # 检查文件是否存在，询问是否覆盖
+    if pdf_path.exists() and not _confirm_overwrite(str(pdf_path)):
+        raise RuntimeError("用户取消了转换")
+
     pythoncom.CoInitialize()
 
     app = None
@@ -208,6 +212,20 @@ def ppt_to_pdf(ppt_path: str) -> str:
     return str(pdf_path)
 
 
+def _confirm_overwrite(path: str) -> bool:
+    """询问用户是否覆盖已有文件。返回 True=覆盖，False=跳过。"""
+    try:
+        import tkinter
+        from tkinter import messagebox
+        root = tkinter.Tk()
+        root.withdraw()
+        result = messagebox.askyesno("文件已存在", f"文件已存在:\n{path}\n\n是否覆盖？")
+        root.destroy()
+        return result
+    except Exception:
+        return True
+
+
 def main():
     if len(sys.argv) < 2:
         print("用法: python ppt_to_pdf.py <PPT文件路径>")
@@ -222,7 +240,6 @@ def main():
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
         handlers=[
-            logging.FileHandler(str(log_path), encoding="utf-8"),
             logging.StreamHandler(),
         ],
     )
