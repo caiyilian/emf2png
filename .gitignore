@@ -22,6 +22,9 @@ test.pptx
 *.ppt
 *.pptx
 
+# Chat notes
+chat.md
+
 # Environment
 .env
 .env.local
