@@ -18,15 +18,16 @@ import numpy as np
 Image.MAX_IMAGE_PIXELS = 500_000_000
 
 
-def _is_white_background(arr: np.ndarray) -> bool:
+def _is_white_background(arr: np.ndarray, strict: bool = True) -> bool:
     """
     判断图片是否为白底背景。
 
-    检查四边（首行、末行、首列、末列）是否全部为纯白像素。
+    检查四边（首行、末行、首列、末列）是否全部为白像素。
     透明像素 (alpha=0) 也视为白。
 
     Args:
         arr: RGBA numpy 数组，形状 (H, W, 4)
+        strict: True=严格模式(要求纯白#FFFFFF), False=宽松模式(>=248)
 
     Returns:
         四边全白 → True（认为是白底）
@@ -35,7 +36,10 @@ def _is_white_background(arr: np.ndarray) -> bool:
     alpha = arr[:, :, 3]
     rgb = arr[:, :, :3]
 
-    white_mask = (rgb[:, :, 0] == 255) & (rgb[:, :, 1] == 255) & (rgb[:, :, 2] == 255)
+    if strict:
+        white_mask = (rgb[:, :, 0] == 255) & (rgb[:, :, 1] == 255) & (rgb[:, :, 2] == 255)
+    else:
+        white_mask = (rgb[:, :, 0] >= 248) & (rgb[:, :, 1] >= 248) & (rgb[:, :, 2] >= 248)
     white_mask |= (alpha == 0)  # 透明像素视为白
 
     rows_all_white = np.all(white_mask, axis=1)  # 每行是否全白
@@ -45,7 +49,7 @@ def _is_white_background(arr: np.ndarray) -> bool:
     return bool(rows_all_white[0] and rows_all_white[-1] and cols_all_white[0] and cols_all_white[-1])
 
 
-def _find_crop_bounds(arr: np.ndarray) -> tuple[int, int, int, int] | None:
+def _find_crop_bounds(arr: np.ndarray, strict: bool = True) -> tuple[int, int, int, int] | None:
     """
     找到内容区域的边界（跳过纯白行列）。
 
@@ -56,7 +60,10 @@ def _find_crop_bounds(arr: np.ndarray) -> tuple[int, int, int, int] | None:
     alpha = arr[:, :, 3]
     rgb = arr[:, :, :3]
 
-    white_mask = (rgb[:, :, 0] == 255) & (rgb[:, :, 1] == 255) & (rgb[:, :, 2] == 255)
+    if strict:
+        white_mask = (rgb[:, :, 0] == 255) & (rgb[:, :, 1] == 255) & (rgb[:, :, 2] == 255)
+    else:
+        white_mask = (rgb[:, :, 0] >= 248) & (rgb[:, :, 1] >= 248) & (rgb[:, :, 2] >= 248)
     white_mask |= (alpha == 0)
 
     rows_all_white = np.all(white_mask, axis=1)
@@ -74,7 +81,7 @@ def _find_crop_bounds(arr: np.ndarray) -> tuple[int, int, int, int] | None:
     return (left, top, right, bottom)
 
 
-def trim_white_borders(png_path: str) -> str:
+def trim_white_borders(png_path: str, strict: bool = True) -> str:
     """
     裁剪单张 PNG 的纯白边 (#FFFFFF)。
 
@@ -89,6 +96,7 @@ def trim_white_borders(png_path: str) -> str:
 
     Args:
         png_path: PNG 文件路径
+        strict: True=严格模式(要求纯白#FFFFFF), False=宽松模式(>=248)
 
     Returns:
         处理后的 PNG 文件路径（原地覆盖）
@@ -97,11 +105,11 @@ def trim_white_borders(png_path: str) -> str:
     arr = np.array(img)
 
     # 判断是否为白底
-    if not _is_white_background(arr):
+    if not _is_white_background(arr, strict=strict):
         return png_path  # 非白底，跳过
 
     # 找到裁剪边界
-    bounds = _find_crop_bounds(arr)
+    bounds = _find_crop_bounds(arr, strict=strict)
     if bounds is None:
         return png_path  # 纯白图，跳过
 
@@ -120,10 +128,11 @@ def trim_white_borders(png_path: str) -> str:
 def batch_trim_white_borders(
     png_files: list[str],
     progress_callback=None,
+    strict: bool = True,
 ) -> list[str]:
     """批量裁剪白边，就地覆盖。"""
     for f in png_files:
-        trim_white_borders(f)
+        trim_white_borders(f, strict=strict)
         if progress_callback:
             progress_callback(1, len(png_files), Path(f).name)
     return png_files
