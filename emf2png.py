@@ -23,6 +23,9 @@ else:
     _root = Path(__file__).parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
+_src = str(_root / "src")
+if _src not in sys.path:
+    sys.path.insert(0, _src)
 
 
 import argparse
@@ -173,6 +176,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="裁剪纯白边 (#FFFFFF)，非白底背景自动跳过不处理",
     )
     parser.add_argument(
+        "--no-trim-strict",
+        action="store_false",
+        dest="trim_strict",
+        default=True,
+        help="宽松模式：使用 >=248 阈值而非纯白 #FFFFFF（解决抗锯齿边缘导致的裁剪跳过问题）",
+    )
+    parser.add_argument(
         "--start",
         type=int,
         default=1,
@@ -287,6 +297,7 @@ def _main():
         png_files = batch_trim_white_borders(
             png_files,
             progress_callback=cb3,
+            strict=args.trim_strict,
         )
         bar3.close()
         tqdm.write(f"  -> 白边裁剪完成")
