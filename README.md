@@ -62,6 +62,7 @@ python emf2png.py 产品介绍.pptx --trim -s 4
 | `-s, --scale` | PNG 缩放倍率（越高越清晰） | `2.0` |
 | `--dpi` | 输出 DPI | `300` |
 | `--trim` | 裁剪纯白边 (#FFFFFF)，非白底自动跳过 | `False` |
+| `--no-trim-strict` | 宽松模式：使用 >=248 阈值，解决抗锯齿白边问题 | 严格模式(默认) |
 | `--keep-emf` | 保留中间 EMF 文件 | `False` |
 | `--merge-pdf` | 合并为 PDF | `False` |
 | `--start` | 起始页码 | `1` |
