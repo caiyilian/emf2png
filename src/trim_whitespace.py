@@ -27,7 +27,7 @@ def _is_white_background(arr: np.ndarray, strict: bool = True) -> bool:
 
     Args:
         arr: RGBA numpy 数组，形状 (H, W, 4)
-        strict: True=严格模式(要求纯白#FFFFFF), False=宽松模式(>=248)
+        strict: True=严格模式(要求纯白#FFFFFF), False=宽松模式(>=248, 允许≤5%瑕疵)
 
     Returns:
         四边全白 → True（认为是白底）
@@ -42,8 +42,13 @@ def _is_white_background(arr: np.ndarray, strict: bool = True) -> bool:
         white_mask = (rgb[:, :, 0] >= 248) & (rgb[:, :, 1] >= 248) & (rgb[:, :, 2] >= 248)
     white_mask |= (alpha == 0)  # 透明像素视为白
 
-    rows_all_white = np.all(white_mask, axis=1)  # 每行是否全白
-    cols_all_white = np.all(white_mask, axis=0)  # 每列是否全白
+    if strict:
+        rows_all_white = np.all(white_mask, axis=1)  # 每行是否全白
+        cols_all_white = np.all(white_mask, axis=0)  # 每列是否全白
+    else:
+        # 宽松模式：四边允许 ≤5% 非白像素（渲染瑕疵）
+        rows_all_white = np.mean(white_mask, axis=1) >= 0.95
+        cols_all_white = np.mean(white_mask, axis=0) >= 0.95
 
     # 四边都全白 → 白底
     return bool(rows_all_white[0] and rows_all_white[-1] and cols_all_white[0] and cols_all_white[-1])
@@ -53,9 +58,12 @@ def _find_crop_bounds(arr: np.ndarray, strict: bool = True) -> tuple[int, int, i
     """
     找到内容区域的边界（跳过纯白行列）。
 
+    Args:
+        arr: RGBA numpy 数组
+        strict: True=严格模式(要求每行/列全白), False=允许少量非白(≤0.5%)
+
     Returns:
         (left, top, right, bottom) 裁剪边界
-        如果图片纯白（无内容），返回 None
     """
     alpha = arr[:, :, 3]
     rgb = arr[:, :, :3]
@@ -66,8 +74,15 @@ def _find_crop_bounds(arr: np.ndarray, strict: bool = True) -> tuple[int, int, i
         white_mask = (rgb[:, :, 0] >= 248) & (rgb[:, :, 1] >= 248) & (rgb[:, :, 2] >= 248)
     white_mask |= (alpha == 0)
 
-    rows_all_white = np.all(white_mask, axis=1)
-    cols_all_white = np.all(white_mask, axis=0)
+    if strict:
+        rows_all_white = np.all(white_mask, axis=1)
+        cols_all_white = np.all(white_mask, axis=0)
+    else:
+        # 宽松模式：允许 ≤0.5% 的像素非白（抗锯齿/渲染瑕疵）
+        white_ratio_rows = np.mean(white_mask, axis=1)
+        white_ratio_cols = np.mean(white_mask, axis=0)
+        rows_all_white = white_ratio_rows >= 0.995
+        cols_all_white = white_ratio_cols >= 0.995
 
     # 如果所有行列都全白（纯白图片），不裁剪
     if np.all(rows_all_white) or np.all(cols_all_white):
