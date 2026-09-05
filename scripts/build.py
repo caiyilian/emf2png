@@ -36,6 +36,8 @@ def build_cli():
         "--hidden-import", "PIL._tkinter_finder",
         "--hidden-import", "numpy",
         "--hidden-import", "img2pdf",
+        "--hidden-import", "drawio_to_pdf",
+        "--hidden-import", "pymupdf",
         "emf2png.py",
     ])
     exe = DIST / "emf2png.exe"
@@ -60,6 +62,8 @@ def build_gui():
         "--hidden-import", "PIL._tkinter_finder",
         "--hidden-import", "numpy",
         "--hidden-import", "img2pdf",
+        "--hidden-import", "drawio_to_pdf",
+        "--hidden-import", "pymupdf",
         "--hidden-import", "customtkinter",
         "gui/app.py",
     ])

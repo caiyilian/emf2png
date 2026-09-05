@@ -129,19 +129,20 @@ def print_summary(png_files: list[str], elapsed: float, output_dir: str):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="将 PowerPoint / EMF 文件转换为 PNG 图片 (PPT → EMF → PNG)",
+        description="将 PowerPoint / EMF 文件转换为 PNG，或将 Draw.io 转为裁剪白边的 PDF",
         epilog="示例:\n"
                "  %(prog)s 产品介绍.pptx\n"
                "  %(prog)s 产品介绍.pptx --trim -s 4\n"
                "  %(prog)s 图表.emf --trim -s 4\n"
                "  %(prog)s 产品介绍.pptx --start 3 --end 10 --merge-pdf\n"
+               "  %(prog)s 架构图.drawio -o ./output\n"
                "  %(prog)s 产品介绍.pptx --keep-emf -o ./output",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument(
         "input",
-        help="输入的 .ppt / .pptx / .emf 文件路径",
+        help="输入的 .ppt / .pptx / .emf / .drawio 文件路径",
     )
     parser.add_argument(
         "-o", "--output",
@@ -194,6 +195,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="结束页码，包含该页 (默认: 全部)",
     )
+    parser.add_argument(
+        "--drawio-border",
+        default="0",
+        help="Draw.io 导出边框宽度（仅 .drawio 输入，默认: 0）",
+    )
+    parser.add_argument(
+        "--pdf-zoom",
+        type=float,
+        default=2.5,
+        help="Draw.io PDF 白边检测渲染倍率（仅 .drawio 输入，默认: 2.5）",
+    )
+    parser.add_argument(
+        "--drawio-strict",
+        action="store_true",
+        help="Draw.io 使用严格纯白边界裁剪；默认使用 >=248 阈值和 99.5%% 行列容差",
+    )
 
     return parser
 
@@ -213,6 +230,10 @@ def main():
         tqdm.write(f"\n[ERR] {e}")
         _do_cleanup()
         sys.exit(1)
+    except ValueError as e:
+        tqdm.write(f"\n[ERR] 参数错误: {e}")
+        _do_cleanup()
+        sys.exit(1)
     except Exception:
         _do_cleanup()
         raise
@@ -230,9 +251,9 @@ def _main():
         sys.exit(1)
 
     suffix = input_path.suffix.lower()
-    if suffix not in (".ppt", ".pptx", ".emf"):
+    if suffix not in (".ppt", ".pptx", ".emf", ".drawio"):
         tqdm.write(f"\n[ERR] 不支持的文件格式: {suffix}")
-        tqdm.write(f"       仅支持 .ppt、.pptx 和 .emf 文件")
+        tqdm.write(f"       仅支持 .ppt、.pptx、.emf 和 .drawio 文件")
         sys.exit(1)
     if suffix == ".ppt":
         tqdm.write(f"[!] 提示: .ppt 是旧版格式，建议另存为 .pptx 以获得更好的兼容性")
@@ -247,6 +268,26 @@ def _main():
         sys.exit(1)
 
     start_time = time.time()
+
+    # Draw.io 使用独立链路：draw.io → 单页 PDF → 白边裁剪。
+    # 该格式不经过 PPT/EMF/PNG 流程，且默认始终裁剪白边。
+    if suffix == ".drawio":
+        print_step("1/1  Draw.io 导出并裁剪为 PDF")
+        from drawio_to_pdf import drawio_to_pdf
+
+        pdf_path = drawio_to_pdf(
+            source=input_path.resolve(),
+            output_pdf=output_dir / f"{input_path.stem}.pdf",
+            border=args.drawio_border,
+            zoom=args.pdf_zoom,
+            dpi=args.dpi,
+            strict=args.drawio_strict,
+        )
+        pdf_size = Path(pdf_path).stat().st_size
+        elapsed = time.time() - start_time
+        tqdm.write(f"  -> PDF 已生成并裁剪白边: {pdf_path}")
+        tqdm.write(f"  -> 文件大小: {pdf_size / 1024:.0f} KB，耗时: {elapsed:.1f}s")
+        return
 
     # ------------------------------------------------
     # 步骤1: PPT → EMF（仅对 PPT 输入）

@@ -15,6 +15,7 @@ ROOT = Path(__file__).parent.parent.resolve()
 PYTHONW = ROOT / ".venv" / "Scripts" / "pythonw.exe"
 PDF_SCRIPT = ROOT / "ppt_to_pdf.py"
 PNG_SCRIPT = ROOT / "convert_to_png.py"
+DRAWIO_SCRIPT = ROOT / "drawio_to_pdf.py"
 
 # 注册表路径模板：每个菜单项使用独立的键名
 # 用不同键名而非子键，避免级联菜单兼容性问题
@@ -25,6 +26,7 @@ MENU_ITEMS = [
     (".pptx", "pdf", "导出 PDF(裁剪白边)", PDF_SCRIPT),
     (".pptm", "pdf", "导出 PDF(裁剪白边)", PDF_SCRIPT),
     (".ppt", "pdf", "导出 PDF(裁剪白边)", PDF_SCRIPT),
+    (".drawio", "pdf", "导出 PDF(裁剪白边)", DRAWIO_SCRIPT),
     (".emf", "png", "转为 PNG(裁剪白边)", PNG_SCRIPT),
     (".pptx", "png", "导出 PNG(裁剪白边)", PNG_SCRIPT),
     (".pptm", "png", "导出 PNG(裁剪白边)", PNG_SCRIPT),
@@ -50,7 +52,7 @@ def install():
     print("安装右键菜单...")
 
     # 先清理所有旧格式（兼容 emf2png 直接键、emf2png\pdf 子键等）
-    for ext in (".pptx", ".pptm", ".ppt", ".emf"):
+    for ext in (".pptx", ".pptm", ".ppt", ".emf", ".drawio"):
         base = r"Software\Classes\SystemFileAssociations\{ext}\shell\emf2png".format(ext=ext)
         for suffix in ["", r"\command", r"\pdf\command", r"\pdf", r"\png\command", r"\png"]:
             try:
@@ -124,6 +126,10 @@ def main():
         sys.exit(1)
     if not PNG_SCRIPT.exists():
         print(f"[ERR] 找不到 {PNG_SCRIPT}")
+        input("\n按 Enter 退出...")
+        sys.exit(1)
+    if not DRAWIO_SCRIPT.exists():
+        print(f"[ERR] 找不到 {DRAWIO_SCRIPT}")
         input("\n按 Enter 退出...")
         sys.exit(1)
 
