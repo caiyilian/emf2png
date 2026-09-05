@@ -1,9 +1,10 @@
 # emf2png
 
-> 一键将 PowerPoint 幻灯片导出为高清 PNG 图片，自动裁剪白边，提取矢量级素材。
+> 一键将 PowerPoint 幻灯片导出为高清 PNG 图片，或将 Draw.io 图表导出为裁剪白边的单页 PDF。
 
 ```
 PPT/PPTX  →  EMF  →  PNG (可选裁剪白边)  →  PDF (可选合并)
+.drawio   →  draw.io CLI → PDF → 单页白边裁剪
 ```
 
 ---
@@ -29,6 +30,7 @@ emf2png.exe 产品介绍.pptx --trim -s 4
 emf2png.exe 产品介绍.pptx -o ./output
 emf2png.exe 产品介绍.pptx --trim -s 2          # 裁剪白边 + 2x 高清
 emf2png.exe 产品介绍.pptx --start 3 --end 10    # 指定页码范围
+emf2png.exe 架构图.drawio -o ./output            # Draw.io → 单页 PDF + 裁剪白边
 ```
 
 ### 方式二：使用 uv（推荐）
@@ -51,13 +53,22 @@ pip install -r requirements.txt
 python emf2png.py 产品介绍.pptx --trim -s 4
 ```
 
+Draw.io 文件也可以直接转换：
+
+```bash
+python drawio_to_pdf.py 架构图.drawio
+python drawio_to_pdf.py 架构图.drawio -o ./output/架构图.pdf
+# 如需只裁剪纯白边，可显式启用严格模式
+python drawio_to_pdf.py 架构图.drawio --strict
+```
+
 ---
 
 ## 参数说明
 
 | 参数 | 说明 | 默认 |
 |------|------|------|
-| `input` | PPT/PPTX 文件路径 | **必填** |
+| `input` | PPT/PPTX/EMF/Draw.io 文件路径 | **必填** |
 | `-o, --output` | 输出目录 | `./output` |
 | `-s, --scale` | PNG 缩放倍率（越高越清晰） | `2.0` |
 | `--dpi` | 输出 DPI | `300` |
@@ -67,6 +78,9 @@ python emf2png.py 产品介绍.pptx --trim -s 4
 | `--merge-pdf` | 合并为 PDF | `False` |
 | `--start` | 起始页码 | `1` |
 | `--end` | 结束页码 | 全部 |
+| `--drawio-border` | Draw.io 导出边框宽度 | `0` |
+| `--pdf-zoom` | Draw.io PDF 白边检测渲染倍率 | `2.5` |
+| `--drawio-strict` | Draw.io 只把纯白 `#FFFFFF` 视为空白 | `False` |
 
 ---
 
@@ -81,6 +95,10 @@ emf2png.exe 产品介绍.pptx --merge-pdf
 
 # 指定范围和缩放
 emf2png.exe 产品介绍.pptx --start 5 --end 15 -s 3 --trim --merge-pdf
+
+# Draw.io 导出单页 PDF 并裁剪白边
+emf2png.exe 架构图.drawio -o ./output
+python drawio_to_pdf.py 架构图.drawio --zoom 3 --dpi 300
 ```
 
 ---
@@ -89,6 +107,7 @@ emf2png.exe 产品介绍.pptx --start 5 --end 15 -s 3 --trim --merge-pdf
 
 - **操作系统**: Windows 10/11
 - **Office**: Microsoft PowerPoint（用于 PPT→EMF 导出）
+- **Draw.io**: draw.io Desktop（用于 .drawio→PDF 导出，可通过 `DRAWIO_EXE` 指定路径）
 - **Python**（仅源码运行需要）: 3.10+（推荐使用项目的 uv 环境，Python 3.12）
 
 ---
@@ -119,6 +138,20 @@ emf2png.exe 产品介绍.pptx --start 5 --end 15 -s 3 --trim --merge-pdf
   output.pdf
 ```
 
+Draw.io 文件使用独立链路，不依赖 PowerPoint：
+
+```
+.drawio
+     │
+     ▼  draw.io CLI（--export --format pdf --crop --border 0）
+     │
+  临时 PDF
+     │
+     ▼  drawio_to_pdf.py（渲染、按 >=248 阈值和 99.5% 行列容差寻找边界）
+     │
+  单页 PDF（最终输出）
+```
+
 ---
 
 ## 项目结构
@@ -126,6 +159,8 @@ emf2png.exe 产品介绍.pptx --start 5 --end 15 -s 3 --trim --merge-pdf
 ```
 emf2png/
 ├── emf2png.py              # 主入口 CLI
+├── drawio_to_pdf.py        # Draw.io → 单页 PDF + 白边裁剪
+├── pdf_trim.py             # 单页 PDF 白边裁剪工具
 ├── src/                    # 核心模块
 │   ├── __init__.py
 │   ├── emf_to_png.py       # EMF → PNG 模块

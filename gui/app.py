@@ -30,7 +30,7 @@ from tkinter import filedialog, messagebox
 #  主题与常量
 # ──────────────────────────────────────────────
 
-APP_TITLE = "emf2png — PPT / EMF 转 PNG 素材提取工具"
+APP_TITLE = "emf2png — PPT / EMF / Draw.io 转换工具"
 
 WINDOW_WIDTH = 640
 WINDOW_HEIGHT = 700
@@ -134,7 +134,7 @@ class App(ctk.CTk):
         # 副标题
         subtitle = ctk.CTkLabel(
             frame,
-            text="PowerPoint / EMF 幻灯片 → 高清 PNG 素材",
+            text="PowerPoint / EMF → 高清 PNG；Draw.io → 裁剪白边 PDF",
             font=ctk.CTkFont(size=13),
             text_color=("gray40", "gray60"),
         )
@@ -176,7 +176,7 @@ class App(ctk.CTk):
 
         label = ctk.CTkLabel(
             group,
-            text="PPT 文件",
+            text="输入文件",
             font=ctk.CTkFont(size=13, weight="bold"),
             width=80,
             anchor="w",
@@ -185,7 +185,7 @@ class App(ctk.CTk):
 
         self.entry_ppt = ctk.CTkEntry(
             group,
-            placeholder_text="选择 .ppt / .pptx / .emf 文件",
+            placeholder_text="选择 .ppt / .pptx / .emf / .drawio 文件",
         )
         self.entry_ppt.grid(row=0, column=1, sticky="ew", padx=(0, 4), pady=10)
 
@@ -199,11 +199,12 @@ class App(ctk.CTk):
 
     def _on_browse_ppt(self):
         path = filedialog.askopenfilename(
-            title="选择 PowerPoint 或 EMF 文件",
+            title="选择 PowerPoint、EMF 或 Draw.io 文件",
             filetypes=[
-                ("支持的文件", "*.pptx *.ppt *.emf"),
+                ("支持的文件", "*.pptx *.ppt *.emf *.drawio"),
                 ("PowerPoint 文件", "*.pptx *.ppt"),
                 ("EMF 矢量图", "*.emf"),
+                ("Draw.io 文件", "*.drawio"),
                 ("所有文件", "*.*"),
             ],
         )
@@ -222,6 +223,8 @@ class App(ctk.CTk):
             max_pages = 1  # EMF 单文件单页
         elif suffix == ".pptx":
             max_pages = _count_pptx_slides(path)
+        elif suffix == ".drawio":
+            max_pages = 1  # 当前 Draw.io 链路要求导出为单页 PDF
 
         if max_pages is not None:
             self.start_entry.configure(validate="key")
@@ -501,7 +504,7 @@ class App(ctk.CTk):
         # 读取所有参数
         ppt_path = self.entry_ppt.get().strip()
         if not ppt_path or not Path(ppt_path).exists():
-            self._log("[ERR] 请先选择有效的 PPT 文件")
+            self._log("[ERR] 请先选择有效的 PPT、EMF 或 Draw.io 文件")
             return
 
         output_dir = self.entry_output.get().strip() or f"./output/{Path(ppt_path).stem}/"
@@ -567,19 +570,12 @@ class App(ctk.CTk):
         self.end_entry.configure(state=state)
         self.scale_slider.configure(state=state)
 
-    def _make_progress_callback(self):
+    def _make_progress_callback(self, total_steps: int = 4):
         """创建进度回调闭包，更新进度条和日志。"""
-        step_map = {
-            1: "PPT 导出为 EMF",
-            2: "EMF 转换为 PNG",
-            3: "裁剪白边",
-            4: "合并 PDF",
-        }
         current_step = [0]  # mutable closure
 
         def on_step(step_num: int, message: str):
             current_step[0] = step_num
-            total_steps = 4
             base_progress = (step_num - 1) / total_steps
             self.progress_bar.set(base_progress)
             self._log(f"\n[{step_num}/{total_steps}] {message}")
@@ -587,7 +583,6 @@ class App(ctk.CTk):
         def on_progress(current: int, total: int, filename: str = ""):
             if total > 0:
                 step = current_step[0]
-                total_steps = 4
                 step_progress = current / total / total_steps
                 overall = (step - 1) / total_steps + step_progress
                 self.progress_bar.set(min(overall, 1.0))
@@ -609,11 +604,30 @@ class App(ctk.CTk):
         merge_pdf: bool,
     ):
         """在后台线程中执行转换流程。"""
-        on_step, on_progress = self._make_progress_callback()
+        is_drawio = ppt_path.lower().endswith((".drawio", ".drawio.xml"))
+        on_step, on_progress = self._make_progress_callback(
+            total_steps=1 if is_drawio else 4
+        )
 
         try:
             # 确保输出目录
             Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            # Draw.io 使用独立链路：draw.io → 单页 PDF → 白边裁剪。
+            if is_drawio:
+                on_step(1, "Draw.io 导出并裁剪为 PDF")
+                from drawio_to_pdf import drawio_to_pdf
+
+                pdf_path = drawio_to_pdf(
+                    source=ppt_path,
+                    output_pdf=Path(output_dir) / f"{Path(ppt_path).stem}.pdf",
+                    zoom=max(float(scale), 0.5),
+                    dpi=dpi,
+                    strict=False,
+                )
+                self._log(f"  -> PDF 已生成并裁剪白边: {pdf_path}")
+                self.after(0, self._on_convert_done, [], output_dir, pdf_path)
+                return
 
             # 检测输入类型：PPT 或 EMF
             is_emf = ppt_path.lower().endswith(".emf")
@@ -672,13 +686,25 @@ class App(ctk.CTk):
         except Exception as e:
             self.after(0, self._on_convert_error, str(e))
 
-    def _on_convert_done(self, png_files: list, output_dir: str):
+    def _on_convert_done(
+        self,
+        png_files: list,
+        output_dir: str,
+        pdf_path: str | None = None,
+    ):
         """转换完成：显示汇总，恢复 UI，显示"打开目录"按钮。"""
         elapsed = time.time() - self._convert_start_time
-        total_size = sum(Path(f).stat().st_size for f in png_files)
+        if pdf_path:
+            total_size = Path(pdf_path).stat().st_size
+        else:
+            total_size = sum(Path(f).stat().st_size for f in png_files)
         self.progress_bar.set(1.0)
         self._log(f"\n{'='*40}")
-        self._log(f"[OK] 完成! 共生成 {len(png_files)} 个 PNG 文件")
+        if pdf_path:
+            self._log("[OK] 完成! 已生成 1 个 PDF 文件")
+            self._log(f"    PDF: {Path(pdf_path).resolve()}")
+        else:
+            self._log(f"[OK] 完成! 共生成 {len(png_files)} 个 PNG 文件")
         self._log(f"    耗时: {elapsed:.1f}s")
         self._log(f"    总大小: {total_size / 1024:.0f} KB")
         self._log(f"    输出目录: {Path(output_dir).resolve()}")
